@@ -32,8 +32,6 @@ pub const XC_watch: libc::c_ushort = 150;
 pub const XC_xterm: libc::c_ushort = 152;
 
 extern "C" {
-    fn XCreateFontCursor(_: *mut Display, _: libc::c_ushort) -> Cursor;
-
     fn XCreateBitmapFromData(
         _: *mut Display,
         _: Drawable,
@@ -90,7 +88,7 @@ pub unsafe fn create_empty_cursor() -> Cursor {
 }
 
 pub unsafe fn load_cursor(shape: libc::c_ushort) -> Cursor {
-    XCreateFontCursor(_sapp_x11_display, shape)
+    crate::egl::XCreateFontCursor(_sapp_x11_display as _, shape as _)
 }
 
 pub unsafe fn set_cursor(cursor: Cursor) {

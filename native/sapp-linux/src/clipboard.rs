@@ -69,7 +69,7 @@ pub unsafe fn get_clipboard(
     // In case that our app already is clipboard owner - we need to handle SelectionNotify for data response
     // and SelectionRequest - to handle this request we just did couple of lines above
     loop {
-        XNextEvent(_sapp_x11_display, &mut event);
+        crate::egl::XNextEvent(_sapp_x11_display as _, &mut event as *mut _ as _);
         if !(event.type_0 != SelectionNotify || event.xselection.selection != bufid) {
             break;
         }
@@ -181,23 +181,23 @@ pub(crate) unsafe fn respond_to_clipboard_request(event: *const XEvent) {
             message.as_bytes().len() as _,
         );
 
-        XSendEvent(
-            _sapp_x11_display,
+        crate::egl::XSendEvent(
+            _sapp_x11_display as _,
             ev.requestor,
             0 as libc::c_int,
             0 as libc::c_int as libc::c_long,
-            &mut ev as *mut XSelectionEvent as *mut XEvent,
+            &mut ev as *mut XSelectionEvent as *mut _,
         );
     } else {
         // signal X that request is denied
         ev.property = 0 as Atom;
 
-        XSendEvent(
-            _sapp_x11_display,
+        crate::egl::XSendEvent(
+            _sapp_x11_display as _,
             ev.requestor,
             0 as libc::c_int,
             0 as libc::c_int as libc::c_long,
-            &mut ev as *mut XSelectionEvent as *mut XEvent,
+            &mut ev as *mut XSelectionEvent as *mut _,
         );
     }
 }

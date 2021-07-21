@@ -12,6 +12,7 @@
     unused_mut
 )]
 
+mod egl;
 pub mod gl;
 mod rand;
 mod x;
@@ -401,8 +402,9 @@ pub type PFNGLXCREATENEWCONTEXTPROC = Option<
     ) -> GLXContext,
 >;
 
-pub unsafe extern "C" fn _sapp_x11_create_window(mut visual: *mut Visual, mut depth: libc::c_int) {
-    _sapp_x11_colormap = XCreateColormap(_sapp_x11_display, _sapp_x11_root, visual, AllocNone);
+pub unsafe extern "C" fn _sapp_x11_create_window(mut depth: libc::c_int) {
+    println!("_sapp_x11_create_window");
+    //_sapp_x11_colormap = XCreateColormap(_sapp_x11_display, _sapp_x11_root, visual, AllocNone);
     let mut wa = XSetWindowAttributes {
         background_pixmap: 0,
         background_pixel: 0,
@@ -426,7 +428,7 @@ pub unsafe extern "C" fn _sapp_x11_create_window(mut visual: *mut Visual, mut de
         ::std::mem::size_of::<XSetWindowAttributes>() as libc::c_ulong,
     );
     let wamask = (CWBorderPixel | CWColormap | CWEventMask) as u32;
-    wa.colormap = _sapp_x11_colormap;
+    //wa.colormap = _sapp_x11_colormap;
     wa.border_pixel = 0 as libc::c_int as libc::c_ulong;
     wa.event_mask = StructureNotifyMask
         | KeyPressMask
@@ -442,20 +444,22 @@ pub unsafe extern "C" fn _sapp_x11_create_window(mut visual: *mut Visual, mut de
         | PropertyChangeMask;
     _sapp_x11_grab_error_handler();
 
+    println!("_sapp_x11_create_window: XCreateWindow");
     _sapp_x11_window = XCreateWindow(
         _sapp_x11_display,
         _sapp_x11_root,
-        0 as libc::c_int,
-        0 as libc::c_int,
-        _sapp.window_width as libc::c_uint,
-        _sapp.window_height as libc::c_uint,
-        0 as libc::c_int as libc::c_uint,
+        0,
+        0,
+        _sapp.window_width as _,
+        _sapp.window_height as _,
+        0,
         depth,
         InputOutput as libc::c_uint,
-        visual,
+        0 as _, // CopyFromParent
         wamask as libc::c_ulong,
         &mut wa,
     );
+    println!("_sapp_x11_create_window: XCreateWindow success");
     _sapp_x11_release_error_handler();
     if _sapp_x11_window == 0 {
         _sapp_fail("X11: Failed to create window");
@@ -466,6 +470,7 @@ pub unsafe extern "C" fn _sapp_x11_create_window(mut visual: *mut Visual, mut de
 
     _sapp_empty_cursor = x_cursor::create_empty_cursor();
 
+    println!("_sapp_x11_create_window: XSetWMProtocols");
     let mut protocols: [Atom; 1] = [_sapp_x11_WM_DELETE_WINDOW];
     XSetWMProtocols(
         _sapp_x11_display,
@@ -473,6 +478,8 @@ pub unsafe extern "C" fn _sapp_x11_create_window(mut visual: *mut Visual, mut de
         protocols.as_mut_ptr(),
         1 as libc::c_int,
     );
+
+    println!("_sapp_x11_create_window: XAllocSizeHints");
     let mut hints = XAllocSizeHints();
     (*hints).flags |= PWinGravity;
     if _sapp.desc.window_resizable == false {
@@ -482,11 +489,18 @@ pub unsafe extern "C" fn _sapp_x11_create_window(mut visual: *mut Visual, mut de
         (*hints).max_width = _sapp.desc.width;
         (*hints).max_height = _sapp.desc.height;
     }
+
     (*hints).win_gravity = StaticGravity;
+    println!("_sapp_x11_create_window: XSetWMNormalHints");
     XSetWMNormalHints(_sapp_x11_display, _sapp_x11_window, hints);
     XFree(hints as *mut libc::c_void);
-    _sapp_x11_update_window_title();
+
+    println!("_sapp_x11_create_window: update_window_title");
+    //_sapp_x11_update_window_title();
+    println!("_sapp_x11_create_window: query_window_size");
     _sapp_x11_query_window_size();
+
+    println!("_sapp_x11_create_window: done");
 }
 
 pub unsafe extern "C" fn _sapp_strcpy(
@@ -629,187 +643,6 @@ pub unsafe extern "C" fn _sapp_x11_init_extensions() {
         false as _,
     );
 }
-pub static mut _sapp_glx_CreateNewContext: PFNGLXCREATENEWCONTEXTPROC = None;
-pub static mut _sapp_glx_QueryExtension: PFNGLXQUERYEXTENSIONPROC = None;
-pub static mut _sapp_glx_errorbase: libc::c_int = 0;
-pub static mut _sapp_glx_eventbase: libc::c_int = 0;
-pub static mut _sapp_glx_QueryVersion: PFNGLXQUERYVERSIONPROC = None;
-pub static mut _sapp_glx_major: libc::c_int = 0;
-pub static mut _sapp_glx_minor: libc::c_int = 0;
-pub static mut _sapp_glx_ARB_framebuffer_sRGB: bool = false;
-pub static mut _sapp_glx_EXT_framebuffer_sRGB: bool = false;
-pub static mut _sapp_glx_GetProcAddress: PFNGLXGETPROCADDRESSPROC = None;
-pub static mut _sapp_glx_GetProcAddressARB: PFNGLXGETPROCADDRESSPROC = None;
-pub static mut _sapp_glx_libgl: *mut libc::c_void = 0 as *const libc::c_void as *mut libc::c_void;
-
-unsafe fn _sapp_glx_getprocaddr<T: Sized>(procname: &[u8]) -> T {
-    let procname = procname.as_ptr() as _;
-
-    if _sapp_glx_GetProcAddress.is_some() {
-        return ::std::mem::transmute_copy::<_, T>(&_sapp_glx_GetProcAddress
-            .expect("non-null function pointer")(
-            procname
-        ));
-    } else if _sapp_glx_GetProcAddressARB.is_some() {
-        return ::std::mem::transmute_copy::<_, T>(&_sapp_glx_GetProcAddressARB
-            .expect("non-null function pointer")(
-            procname
-        ));
-    } else {
-        return ::std::mem::transmute_copy::<_, T>(&dlsym(_sapp_glx_libgl, procname as _));
-    };
-}
-pub unsafe extern "C" fn _sapp_glx_has_ext(
-    mut ext: *const libc::c_char,
-    mut extensions: *const libc::c_char,
-) -> bool {
-    assert!(!ext.is_null());
-
-    let mut start = extensions;
-    loop {
-        let mut where_0: *const libc::c_char = strstr(start, ext);
-        if where_0.is_null() {
-            return false;
-        }
-        let mut terminator = where_0.offset(strlen(ext) as isize);
-        if where_0 == start
-            || *where_0.offset(-(1 as libc::c_int as isize)) as libc::c_int == ' ' as i32
-        {
-            if *terminator as libc::c_int == ' ' as i32
-                || *terminator as libc::c_int == '\u{0}' as i32
-            {
-                break;
-            }
-        }
-        start = terminator
-    }
-    return true;
-}
-pub unsafe fn _sapp_glx_extsupported(mut ext: &[u8], mut extensions: *const libc::c_char) -> bool {
-    if !extensions.is_null() {
-        return _sapp_glx_has_ext(ext.as_ptr() as _, extensions);
-    } else {
-        return false;
-    };
-}
-pub static mut _sapp_glx_QueryExtensionsString: PFNGLXQUERYEXTENSIONSSTRINGPROC = None;
-pub unsafe extern "C" fn _sapp_glx_init() {
-    let mut sonames: [*const libc::c_char; 3] = [
-        b"libGL.so.1\x00" as *const u8 as *const libc::c_char,
-        b"libGL.so\x00" as *const u8 as *const libc::c_char,
-        0 as *const libc::c_char,
-    ];
-    let mut i = 0 as libc::c_int;
-    while !sonames[i as usize].is_null() {
-        _sapp_glx_libgl = dlopen(sonames[i as usize], RTLD_LAZY | RTLD_GLOBAL);
-        if !_sapp_glx_libgl.is_null() {
-            break;
-        }
-        i += 1
-    }
-    if _sapp_glx_libgl.is_null() {
-        _sapp_fail("GLX: failed to load libGL");
-    }
-
-    unsafe fn load<T: Sized>(lib: *mut libc::c_void, symbol: &[u8]) -> T {
-        ::std::mem::transmute_copy::<*mut libc::c_void, T>(&dlsym(lib, symbol.as_ptr() as _))
-    }
-    _sapp_glx_GetFBConfigs = load(_sapp_glx_libgl, b"glXGetFBConfigs\x00");
-    _sapp_glx_GetFBConfigAttrib = load(_sapp_glx_libgl, b"glXGetFBConfigAttrib\x00");
-    _sapp_glx_GetClientString = load(_sapp_glx_libgl, b"glXGetClientString\x00");
-    _sapp_glx_QueryExtension = load(_sapp_glx_libgl, b"glXQueryExtension\x00");
-    _sapp_glx_QueryVersion = load(_sapp_glx_libgl, b"glXQueryVersion\x00");
-    _sapp_glx_DestroyContext = load(_sapp_glx_libgl, b"glXDestroyContext\x00");
-    _sapp_glx_MakeCurrent = load(_sapp_glx_libgl, b"glXMakeCurrent\x00");
-    _sapp_glx_SwapBuffers = load(_sapp_glx_libgl, b"glXSwapBuffers\x00");
-    _sapp_glx_QueryExtensionsString = load(_sapp_glx_libgl, b"glXQueryExtensionsString\x00");
-    _sapp_glx_CreateNewContext = load(_sapp_glx_libgl, b"glXCreateNewContext\x00");
-    _sapp_glx_CreateWindow = load(_sapp_glx_libgl, b"glXCreateWindow\x00");
-    _sapp_glx_DestroyWindow = load(_sapp_glx_libgl, b"glXDestroyWindow\x00");
-    _sapp_glx_GetProcAddress = load(_sapp_glx_libgl, b"glXGetProcAddress\x00");
-    _sapp_glx_GetProcAddressARB = load(_sapp_glx_libgl, b"glXGetProcAddressARB\x00");
-    _sapp_glx_GetVisualFromFBConfig = load(_sapp_glx_libgl, b"glXGetVisualFromFBConfig\x00");
-    if _sapp_glx_GetFBConfigs.is_none()
-        || _sapp_glx_GetFBConfigAttrib.is_none()
-        || _sapp_glx_GetClientString.is_none()
-        || _sapp_glx_QueryExtension.is_none()
-        || _sapp_glx_QueryVersion.is_none()
-        || _sapp_glx_DestroyContext.is_none()
-        || _sapp_glx_MakeCurrent.is_none()
-        || _sapp_glx_SwapBuffers.is_none()
-        || _sapp_glx_QueryExtensionsString.is_none()
-        || _sapp_glx_CreateNewContext.is_none()
-        || _sapp_glx_CreateWindow.is_none()
-        || _sapp_glx_DestroyWindow.is_none()
-        || _sapp_glx_GetProcAddress.is_none()
-        || _sapp_glx_GetProcAddressARB.is_none()
-        || _sapp_glx_GetVisualFromFBConfig.is_none()
-    {
-        _sapp_fail("GLX: failed to load required entry points");
-    }
-    if _sapp_glx_QueryExtension.expect("non-null function pointer")(
-        _sapp_x11_display,
-        &mut _sapp_glx_errorbase,
-        &mut _sapp_glx_eventbase,
-    ) == 0
-    {
-        _sapp_fail("GLX: GLX extension not found");
-    }
-    if _sapp_glx_QueryVersion.expect("non-null function pointer")(
-        _sapp_x11_display,
-        &mut _sapp_glx_major,
-        &mut _sapp_glx_minor,
-    ) == 0
-    {
-        _sapp_fail("GLX: Failed to query GLX version");
-    }
-    if _sapp_glx_major == 1 as libc::c_int && _sapp_glx_minor < 3 as libc::c_int {
-        _sapp_fail("GLX: GLX version 1.3 is required");
-    }
-    let mut exts = _sapp_glx_QueryExtensionsString.expect("non-null function pointer")(
-        _sapp_x11_display,
-        _sapp_x11_screen,
-    );
-    if _sapp_glx_extsupported(b"GLX_EXT_swap_control\x00", exts) {
-        _sapp_glx_SwapIntervalEXT =
-            _sapp_glx_getprocaddr::<PFNGLXSWAPINTERVALEXTPROC>(b"glXSwapIntervalEXT\x00");
-        _sapp_glx_EXT_swap_control = _sapp_glx_SwapIntervalEXT.is_some()
-    }
-    if _sapp_glx_extsupported(b"GLX_MESA_swap_control\x00", exts) {
-        _sapp_glx_SwapIntervalMESA = _sapp_glx_getprocaddr(b"glXSwapIntervalMESA\x00");
-        _sapp_glx_MESA_swap_control = _sapp_glx_SwapIntervalMESA.is_some()
-    }
-    _sapp_glx_ARB_multisample = _sapp_glx_extsupported(b"GLX_ARB_multisample\x00", exts);
-    _sapp_glx_ARB_framebuffer_sRGB = _sapp_glx_extsupported(b"GLX_ARB_framebuffer_sRGB\x00", exts);
-    _sapp_glx_EXT_framebuffer_sRGB = _sapp_glx_extsupported(b"GLX_EXT_framebuffer_sRGB\x00", exts);
-    if _sapp_glx_extsupported(b"GLX_ARB_create_context\x00", exts) {
-        _sapp_glx_CreateContextAttribsARB =
-            _sapp_glx_getprocaddr(b"glXCreateContextAttribsARB\x00");
-        _sapp_glx_ARB_create_context = _sapp_glx_CreateContextAttribsARB.is_some()
-    }
-    _sapp_glx_ARB_create_context_profile =
-        _sapp_glx_extsupported(b"GLX_ARB_create_context_profile\x00", exts);
-}
-pub static mut _sapp_glx_GetVisualFromFBConfig: PFNGLXGETVISUALFROMFBCONFIGPROC = None;
-pub unsafe extern "C" fn _sapp_glx_choose_visual(
-    mut visual: *mut *mut Visual,
-    mut depth: *mut libc::c_int,
-) {
-    let mut native = _sapp_glx_choosefbconfig();
-    if native.is_null() {
-        _sapp_fail("GLX: Failed to find a suitable GLXFBConfig");
-    }
-    let mut result = _sapp_glx_GetVisualFromFBConfig.expect("non-null function pointer")(
-        _sapp_x11_display,
-        native,
-    );
-    if result.is_null() {
-        _sapp_fail("GLX: Failed to retrieve Visual for GLXFBConfig");
-    }
-    *visual = (*result).visual;
-    *depth = (*result).depth;
-    XFree(result as *mut libc::c_void);
-}
 pub static mut _sapp_x11_root: Window = 0;
 pub static mut _sapp_x11_NET_WM_NAME: Atom = 0;
 pub static mut _sapp_x11_NET_WM_ICON_NAME: Atom = 0;
@@ -897,49 +730,10 @@ pub unsafe extern "C" fn _sapp_x11_grab_error_handler() {
             as unsafe extern "C" fn(_: *mut Display, _: *mut XErrorEvent) -> libc::c_int,
     ));
 }
-pub static mut _sapp_glx_CreateContextAttribsARB: PFNGLXCREATECONTEXTATTRIBSARBPROC = None;
-pub const GLX_CONTEXT_MAJOR_VERSION_ARB: libc::c_int = 0x2091 as libc::c_int;
-pub const GLX_CONTEXT_MINOR_VERSION_ARB: libc::c_int = 0x2092 as libc::c_int;
-pub const GLX_CONTEXT_PROFILE_MASK_ARB: libc::c_int = 0x9126 as libc::c_int;
-pub const GLX_CONTEXT_CORE_PROFILE_BIT_ARB: libc::c_int = 0x1 as libc::c_int;
-pub const GLX_CONTEXT_FLAGS_ARB: libc::c_int = 0x2094 as libc::c_int;
-pub const GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB: libc::c_int = 0x2 as libc::c_int;
 pub unsafe extern "C" fn _sapp_x11_release_error_handler() {
     XSync(_sapp_x11_display, false as _);
     XSetErrorHandler(None);
 }
-pub static mut _sapp_glx_CreateWindow: PFNGLXCREATEWINDOWPROC = None;
-pub static mut _sapp_glx_GetClientString: PFNGLXGETCLIENTSTRINGPROC = None;
-pub const GLX_VENDOR: libc::c_int = 1 as libc::c_int;
-pub static mut _sapp_glx_GetFBConfigs: PFNGLXGETFBCONFIGSPROC = None;
-pub static mut _sapp_x11_screen: libc::c_int = 0;
-pub const GLX_RENDER_TYPE: libc::c_int = 0x8011 as libc::c_int;
-pub const GLX_RGBA_BIT: libc::c_int = 0x1 as libc::c_int;
-pub const GLX_DRAWABLE_TYPE: libc::c_int = 0x8010 as libc::c_int;
-pub const GLX_WINDOW_BIT: libc::c_int = 0x1 as libc::c_int;
-pub const GLX_RED_SIZE: libc::c_int = 8 as libc::c_int;
-pub const GLX_GREEN_SIZE: libc::c_int = 9 as libc::c_int;
-pub const GLX_BLUE_SIZE: libc::c_int = 10 as libc::c_int;
-pub const GLX_ALPHA_SIZE: libc::c_int = 11 as libc::c_int;
-pub const GLX_DEPTH_SIZE: libc::c_int = 12 as libc::c_int;
-pub const GLX_STENCIL_SIZE: libc::c_int = 13 as libc::c_int;
-pub const GLX_DOUBLEBUFFER: libc::c_int = 5 as libc::c_int;
-pub static mut _sapp_glx_ARB_multisample: bool = false;
-pub static mut _sapp_glx_GetFBConfigAttrib: PFNGLXGETFBCONFIGATTRIBPROC = None;
-pub unsafe extern "C" fn _sapp_glx_attrib(
-    mut fbconfig: GLXFBConfig,
-    mut attrib: libc::c_int,
-) -> libc::c_int {
-    let mut value: libc::c_int = 0;
-    _sapp_glx_GetFBConfigAttrib.expect("non-null function pointer")(
-        _sapp_x11_display,
-        fbconfig,
-        attrib,
-        &mut value,
-    );
-    return value;
-}
-pub const GLX_SAMPLES: libc::c_int = 0x186a1 as libc::c_int;
 pub fn _sapp_gl_init_fbconfig() -> _sapp_gl_fbconfig {
     _sapp_gl_fbconfig {
         red_bits: -(1 as libc::c_int),
@@ -1049,136 +843,99 @@ pub unsafe extern "C" fn _sapp_gl_choose_fbconfig(
     }
     return closest;
 }
-pub unsafe extern "C" fn _sapp_glx_choosefbconfig() -> GLXFBConfig {
-    let mut native_configs = 0 as *mut GLXFBConfig;
-    let mut closest = 0 as *const _sapp_gl_fbconfig;
-    let mut i: libc::c_int = 0;
-    let mut native_count: libc::c_int = 0;
-    let mut usable_count: libc::c_int = 0;
-    let mut vendor = 0 as *const libc::c_char;
-    let mut trust_window_bit = true;
-    vendor = _sapp_glx_GetClientString.expect("non-null function pointer")(
-        _sapp_x11_display,
-        GLX_VENDOR,
-    );
-    if !vendor.is_null()
-        && strcmp(vendor, b"Chromium\x00" as *const u8 as *const libc::c_char) == 0 as libc::c_int
-    {
-        trust_window_bit = false
-    }
-    native_configs = _sapp_glx_GetFBConfigs.expect("non-null function pointer")(
-        _sapp_x11_display,
-        _sapp_x11_screen,
-        &mut native_count,
-    );
-    if native_configs.is_null() || native_count == 0 {
-        _sapp_fail("GLX: No GLXFBConfigs returned");
-    }
-    let mut usable_configs: Vec<_sapp_gl_fbconfig> = Vec::new();
-    usable_count = 0 as libc::c_int;
-    let mut current_block_25: u64;
-    for i in 0..native_count {
-        let n = *native_configs.offset(i as isize);
-        let mut u = _sapp_gl_init_fbconfig();
-        if 0 == _sapp_glx_attrib(n, GLX_RENDER_TYPE) & GLX_RGBA_BIT {
-            continue;
-        }
-        if 0 == _sapp_glx_attrib(n, GLX_DRAWABLE_TYPE) & GLX_WINDOW_BIT {
-            if trust_window_bit {
-                continue;
-            }
-        }
-
-        u.red_bits = _sapp_glx_attrib(n, GLX_RED_SIZE);
-        u.green_bits = _sapp_glx_attrib(n, GLX_GREEN_SIZE);
-        u.blue_bits = _sapp_glx_attrib(n, GLX_BLUE_SIZE);
-        u.alpha_bits = _sapp_glx_attrib(n, GLX_ALPHA_SIZE);
-        u.depth_bits = _sapp_glx_attrib(n, GLX_DEPTH_SIZE);
-        u.stencil_bits = _sapp_glx_attrib(n, GLX_STENCIL_SIZE);
-        if _sapp_glx_attrib(n, GLX_DOUBLEBUFFER) != 0 {
-            u.doublebuffer = true
-        }
-        if _sapp_glx_ARB_multisample {
-            u.samples = _sapp_glx_attrib(n, GLX_SAMPLES)
-        }
-        u.handle = n as libc::c_ulong;
-        usable_configs.push(u);
-        usable_count += 1
-    }
-
-    let mut desired = _sapp_gl_init_fbconfig();
-    desired.red_bits = 8;
-    desired.green_bits = 8;
-    desired.blue_bits = 8;
-    desired.alpha_bits = 8;
-    desired.depth_bits = 24;
-    desired.stencil_bits = 8;
-    desired.doublebuffer = true;
-    desired.samples = if _sapp.sample_count > 1 {
-        _sapp.sample_count
-    } else {
-        0
-    };
-    closest = _sapp_gl_choose_fbconfig(
-        &mut desired,
-        usable_configs.as_mut_ptr(),
-        usable_count as libc::c_uint,
-    );
-    let mut result = 0 as GLXFBConfig;
-    if !closest.is_null() {
-        result = (*closest).handle as GLXFBConfig
-    }
-    XFree(native_configs as *mut libc::c_void);
-    return result;
-}
 
 pub unsafe extern "C" fn _sapp_fail(msg: &str) {
     println!("{}", msg);
     std::process::exit(0);
 }
 
-pub unsafe extern "C" fn _sapp_glx_create_context() {
-    let mut native = _sapp_glx_choosefbconfig();
-    if native.is_null() {
-        _sapp_fail("GLX: Failed to find a suitable GLXFBConfig (2)");
+pub unsafe extern "C" fn _sapp_egl_create_context() {
+    _sapp_egl_display = egl::eglGetDisplay(_sapp_x11_display as _);
+    if _sapp_egl_display == /* EGL_NO_DISPLAY */ std::ptr::null_mut() {
+        panic!("cant open display");
     }
-    if !(_sapp_glx_ARB_create_context && _sapp_glx_ARB_create_context_profile) {
-        _sapp_fail("GLX: ARB_create_context and ARB_create_context_profile required");
+
+    if egl::eglInitialize(_sapp_egl_display, std::ptr::null_mut(), std::ptr::null_mut()) == 0 {
+        panic!("egl initialize failed");
     }
-    _sapp_x11_grab_error_handler();
-    let attribs: [libc::c_int; 10] = [
-        GLX_CONTEXT_MAJOR_VERSION_ARB,
-        3,
-        GLX_CONTEXT_MINOR_VERSION_ARB,
-        3,
-        GLX_CONTEXT_PROFILE_MASK_ARB,
-        GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
-        GLX_CONTEXT_FLAGS_ARB,
-        GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-        0,
-        0,
+
+    let alpha_size = if _sapp.desc.alpha { 8 } else { 0 };
+    #[rustfmt::skip]
+    let cfg_attributes = vec![
+        egl::EGL_SURFACE_TYPE, egl::EGL_WINDOW_BIT,
+        egl::EGL_RED_SIZE, 8,
+        egl::EGL_GREEN_SIZE, 8,
+        egl::EGL_BLUE_SIZE, 8,
+        egl::EGL_ALPHA_SIZE, alpha_size,
+        egl::EGL_DEPTH_SIZE, 16,
+        egl::EGL_STENCIL_SIZE, 0,
+        egl::EGL_NONE,
     ];
-    _sapp_glx_ctx = _sapp_glx_CreateContextAttribsARB.expect("non-null function pointer")(
-        _sapp_x11_display,
-        native,
-        std::ptr::null_mut(),
-        true as _,
-        attribs.as_ptr(),
+    let mut available_cfgs: Vec<egl::EGLConfig> = vec![std::ptr::null_mut(); 32];
+    let mut cfg_count = 0;
+
+    egl::eglChooseConfig(
+        _sapp_egl_display,
+        cfg_attributes.as_ptr() as _,
+        available_cfgs.as_ptr() as _,
+        32,
+        &mut cfg_count as *mut _ as *mut _,
     );
-    if _sapp_glx_ctx.is_null() {
-        _sapp_fail("GLX: failed to create GL context");
+    assert!(cfg_count > 0);
+    assert!(cfg_count <= 32);
+
+    // find config with 8-bit rgb buffer if available, ndk sample does not trust egl spec
+    let mut config: egl::EGLConfig = std::ptr::null_mut();
+    let mut exact_cfg_found = false;
+    for c in &mut available_cfgs[0..cfg_count] {
+        let mut r: i32 = 0;
+        let mut g: i32 = 0;
+        let mut b: i32 = 0;
+        let mut a: i32 = 0;
+        let mut d: i32 = 0;
+        if egl::eglGetConfigAttrib(_sapp_egl_display, *c, egl::EGL_RED_SIZE as _, &mut r) == 1
+            && egl::eglGetConfigAttrib(_sapp_egl_display, *c, egl::EGL_GREEN_SIZE as _, &mut g) == 1
+            && egl::eglGetConfigAttrib(_sapp_egl_display, *c, egl::EGL_BLUE_SIZE as _, &mut b) == 1
+            && egl::eglGetConfigAttrib(_sapp_egl_display, *c, egl::EGL_ALPHA_SIZE as _, &mut a) == 1
+            && egl::eglGetConfigAttrib(_sapp_egl_display, *c, egl::EGL_DEPTH_SIZE as _, &mut d) == 1
+            && r == 8
+            && g == 8
+            && b == 8
+            && (alpha_size == 0 || a == alpha_size as _)
+            && d == 16
+        {
+            exact_cfg_found = true;
+            config = *c;
+            break;
+        }
     }
-    _sapp_x11_release_error_handler();
-    _sapp_glx_window = _sapp_glx_CreateWindow.expect("non-null function pointer")(
-        _sapp_x11_display,
-        native,
-        _sapp_x11_window,
-        std::ptr::null(),
+    if !exact_cfg_found {
+        config = available_cfgs[0];
+    }
+    let ctx_attributes = vec![egl::EGL_CONTEXT_CLIENT_VERSION, 3, egl::EGL_NONE];
+    let context = egl::eglCreateContext(
+        _sapp_egl_display,
+        config,
+        /* egl::EGL_NO_CONTEXT */ std::ptr::null_mut(),
+        ctx_attributes.as_ptr() as _,
     );
-    if _sapp_glx_window == 0 {
-        _sapp_fail("GLX: failed to create window");
-    };
+    assert!(context.is_null() == false);
+
+    // create egl surface and make it current
+    _sapp_egl_surface =
+        egl::eglCreateWindowSurface(_sapp_egl_display, config, _sapp_x11_window as _, std::ptr::null_mut());
+
+    if _sapp_egl_surface == /* EGL_NO_SURFACE  */ std::ptr::null_mut() {
+        panic!("surface creation failed");
+    }
+    if egl::eglMakeCurrent(_sapp_egl_display, _sapp_egl_surface, _sapp_egl_surface, context) == 0 {
+        panic!("eglMakeCurrent failed");
+    }
+    //state.surface = surface;
+
+    println!("EGL context done");
 }
+
 pub unsafe extern "C" fn _sapp_x11_window_visible() -> bool {
     let mut wa = XWindowAttributes {
         x: 0,
@@ -1273,40 +1030,16 @@ unsafe fn _sapp_x11_set_fullscreen() {
                 l: std::mem::transmute(data),
             },
         };
-        XSendEvent(
-            _sapp_x11_display,
+        crate::egl::XSendEvent(
+            _sapp_x11_display as _,
             _sapp_x11_root,
             false as _,
             (1048576 | 131072) as _,
-            &mut ev as *mut XClientMessageEvent as *mut XEvent,
+            &mut ev as *mut XClientMessageEvent as *mut _,
         );
     }
 }
 
-pub static mut _sapp_glx_EXT_swap_control: bool = false;
-pub static mut _sapp_glx_SwapIntervalEXT: PFNGLXSWAPINTERVALEXTPROC = None;
-pub static mut _sapp_glx_MESA_swap_control: bool = false;
-pub static mut _sapp_glx_SwapIntervalMESA: PFNGLXSWAPINTERVALMESAPROC = None;
-pub unsafe extern "C" fn _sapp_glx_swapinterval(mut interval: libc::c_int) {
-    _sapp_glx_make_current();
-    if _sapp_glx_EXT_swap_control {
-        _sapp_glx_SwapIntervalEXT.expect("non-null function pointer")(
-            _sapp_x11_display,
-            _sapp_glx_window,
-            interval,
-        );
-    } else if _sapp_glx_MESA_swap_control {
-        _sapp_glx_SwapIntervalMESA.expect("non-null function pointer")(interval);
-    };
-}
-pub static mut _sapp_glx_MakeCurrent: PFNGLXMAKECURRENTPROC = None;
-pub unsafe extern "C" fn _sapp_glx_make_current() {
-    _sapp_glx_MakeCurrent.expect("non-null function pointer")(
-        _sapp_x11_display,
-        _sapp_glx_window,
-        _sapp_glx_ctx,
-    );
-}
 pub unsafe extern "C" fn _sapp_x11_char_event(mut chr: u32, mut repeat: bool, mut mods: u32) {
     if _sapp_events_enabled() {
         _sapp_init_event(sapp_event_type_SAPP_EVENTTYPE_CHAR);
@@ -2611,10 +2344,7 @@ pub unsafe extern "C" fn _sapp_frame() {
     _sapp_call_frame();
     _sapp.frame_count = _sapp.frame_count.wrapping_add(1);
 }
-pub static mut _sapp_glx_SwapBuffers: PFNGLXSWAPBUFFERSPROC = None;
-pub unsafe extern "C" fn _sapp_glx_swap_buffers() {
-    _sapp_glx_SwapBuffers.expect("non-null function pointer")(_sapp_x11_display, _sapp_glx_window);
-}
+
 pub unsafe extern "C" fn _sapp_events_enabled() -> bool {
     return (_sapp.desc.event_cb.is_some() || _sapp.desc.event_userdata_cb.is_some())
         && _sapp.init_called as libc::c_int != 0;
@@ -2699,7 +2429,9 @@ pub unsafe extern "C" fn _sapp_x11_destroy_window() {
     XFlush(_sapp_x11_display);
 }
 pub static mut _sapp_x11_display: *mut Display = 0 as *const Display as *mut Display;
-
+pub static mut _sapp_egl_surface: egl::EGLSurface = 0 as _;
+pub static mut _sapp_egl_display: egl::EGLDisplay = 0 as _;
+    
 #[no_mangle]
 pub unsafe extern "C" fn sapp_run(mut desc: *const sapp_desc) {
     _sapp_init_state(desc);
@@ -2710,7 +2442,7 @@ pub unsafe extern "C" fn sapp_run(mut desc: *const sapp_desc) {
     if _sapp_x11_display.is_null() {
         _sapp_fail("XOpenDisplay() failed!");
     }
-    _sapp_x11_screen = (*(_sapp_x11_display as _XPrivDisplay)).default_screen;
+    //_sapp_x11_screen = (*(_sapp_x11_display as _XPrivDisplay)).default_screen;
     _sapp_x11_root = (*(*(_sapp_x11_display as _XPrivDisplay))
         .screens
         .offset((*(_sapp_x11_display as _XPrivDisplay)).default_screen as isize))
@@ -2724,23 +2456,18 @@ pub unsafe extern "C" fn sapp_run(mut desc: *const sapp_desc) {
 
     _sapp_x11_query_system_dpi();
     _sapp.dpi_scale = _sapp_x11_dpi / 96.0f32;
-    _sapp_x11_init_extensions();
-    _sapp_glx_init();
     let mut visual = 0 as *mut Visual;
     let mut depth = 0 as libc::c_int;
-    _sapp_glx_choose_visual(&mut visual, &mut depth);
-    _sapp_x11_create_window(visual, depth);
-    _sapp_glx_create_context();
+    _sapp_x11_create_window(depth);
+    _sapp_egl_create_context();
     _sapp.valid = true;
     _sapp_x11_show_window();
     if (*desc).fullscreen {
         _sapp_x11_set_fullscreen();
     }
-    _sapp_glx_swapinterval(_sapp.swap_interval);
     XFlush(_sapp_x11_display);
 
     while !_sapp.quit_ordered {
-        _sapp_glx_make_current();
         let mut count = XPending(_sapp_x11_display);
         loop {
             let fresh1 = count;
@@ -2749,11 +2476,11 @@ pub unsafe extern "C" fn sapp_run(mut desc: *const sapp_desc) {
                 break;
             }
             let mut event = _XEvent { type_0: 0 };
-            XNextEvent(_sapp_x11_display, &mut event);
+            crate::egl::XNextEvent(_sapp_x11_display as _, &mut event as *mut _ as _);
             _sapp_x11_process_event(&mut event);
         }
         _sapp_frame();
-        _sapp_glx_swap_buffers();
+        egl::eglSwapBuffers(_sapp_egl_display, _sapp_egl_surface);
         XFlush(_sapp_x11_display);
         if _sapp.quit_requested as libc::c_int != 0 && !_sapp.quit_ordered {
             _sapp_x11_app_event(sapp_event_type_SAPP_EVENTTYPE_QUIT_REQUESTED);

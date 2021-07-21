@@ -17,7 +17,7 @@ pub use Xlib_h::{
     XCloseDisplay, XCreateColormap, XCreateWindow, XDestroyWindow, XErrorEvent, XErrorHandler,
     XEvent, XFlush, XFree, XFreeColormap, XGetKeyboardMapping, XGetWindowAttributes,
     XGetWindowProperty, XGrabPointer, XInitThreads, XInternAtom, XKeyEvent, XLowerWindow,
-    XMapWindow, XNextEvent, XOpenDisplay, XPending, XPointer, XRaiseWindow, XResourceManagerString,
+    XMapWindow, XOpenDisplay, XPending, XPointer, XRaiseWindow, XResourceManagerString,
     XSelectionEvent, XSelectionRequestEvent, XSetErrorHandler, XSetWMProtocols,
     XSetWindowAttributes, XSync, XUngrabPointer, XUnmapWindow, XWindowAttributes, XrmInitialize,
     _XEvent, _XPrivDisplay, _XrmHashBucketRec,
@@ -734,7 +734,6 @@ pub mod Xlib_h {
         pub fn XLowerWindow(_: *mut Display, _: Window) -> libc::c_int;
         pub fn XRaiseWindow(_: *mut Display, _: Window) -> libc::c_int;
         pub fn XPending(_: *mut Display) -> libc::c_int;
-        pub fn XNextEvent(_: *mut Display, _: *mut XEvent) -> libc::c_int;
         pub fn XGetKeyboardMapping(
             _: *mut Display,
             _: KeyCode,
@@ -984,12 +983,3 @@ pub mod string_h {
     }
 }
 
-extern "C" {
-    pub fn XSendEvent(
-        _: *mut Display,
-        _: Window,
-        _: libc::c_int,
-        _: libc::c_long,
-        _: *mut XEvent,
-    ) -> libc::c_int;
-}

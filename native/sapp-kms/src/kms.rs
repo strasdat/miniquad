@@ -491,10 +491,6 @@ unsafe extern "C" fn init_gl() -> libc::c_int {
         b"EGL Extensions \"%s\"\n\x00" as *const u8 as *const libc::c_char,
         eglQueryString(gl.display, 0x3055 as libc::c_int),
     );
-    if eglBindAPI(0x30a0 as libc::c_int as EGLenum) == 0 {
-        println!("failed to bind api EGL_OPENGL_ES_API");
-        return -1;
-    }
 
     eglGetConfigs(
         gl.display,
