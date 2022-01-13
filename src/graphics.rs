@@ -1106,6 +1106,7 @@ impl Context {
 
         let pip = &self.pipelines[self.cache.cur_pipeline.unwrap().0];
         let primitive_type = pip.params.primitive_type.into();
+        println!("{}", primitive_type);
         let index_type = self.cache.index_type.expect("Unset index buffer type");
 
         unsafe {
